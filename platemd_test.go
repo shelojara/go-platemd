@@ -219,6 +219,92 @@ func TestTable_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestMentions(t *testing.T) {
+	c := newConverter(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	t.Run("link form to plate", func(t *testing.T) {
+		value, err := c.MarkdownToPlate(ctx, "Hello [@Jane Doe](mention:u_42)!\n", nil)
+		if err != nil {
+			t.Fatalf("md->plate: %v", err)
+		}
+		kids, _ := value[0]["children"].([]any)
+		var mention map[string]any
+		for _, k := range kids {
+			if m, _ := k.(map[string]any); m["type"] == "mention" {
+				mention = m
+				break
+			}
+		}
+		if mention == nil {
+			t.Fatalf("no mention node produced from `[@Jane Doe](mention:u_42)`: %+v", value)
+		}
+		if mention["value"] != "@Jane Doe" || mention["key"] != "u_42" {
+			t.Errorf("mention = %+v, want value=\"@Jane Doe\" key=\"u_42\"", mention)
+		}
+	})
+
+	t.Run("at-username to plate", func(t *testing.T) {
+		value, err := c.MarkdownToPlate(ctx, "ping @alice please\n", nil)
+		if err != nil {
+			t.Fatalf("md->plate: %v", err)
+		}
+		kids, _ := value[0]["children"].([]any)
+		var mention map[string]any
+		for _, k := range kids {
+			if m, _ := k.(map[string]any); m["type"] == "mention" {
+				mention = m
+				break
+			}
+		}
+		if mention == nil {
+			t.Fatalf("no mention node produced from `@alice`: %+v", value)
+		}
+		if mention["value"] != "alice" {
+			t.Errorf("mention.value = %v, want \"alice\"", mention["value"])
+		}
+		if _, has := mention["key"]; has {
+			t.Errorf("@username form should not set key, got %+v", mention)
+		}
+	})
+
+	t.Run("plate to markdown", func(t *testing.T) {
+		value := []platemd.Node{{"type": "p", "children": []any{
+			map[string]any{"text": "cc "},
+			map[string]any{
+				"type": "mention", "value": "Jane Doe", "key": "u_42",
+				"children": []any{map[string]any{"text": ""}},
+			},
+			map[string]any{"text": "!"},
+		}}}
+		md, err := c.PlateToMarkdown(ctx, value, nil)
+		if err != nil {
+			t.Fatalf("plate->md: %v", err)
+		}
+		if !strings.Contains(md, "[Jane Doe](mention:u_42)") {
+			t.Errorf("plate->md missing mention link: %q", md)
+		}
+	})
+
+	t.Run("disable mentions", func(t *testing.T) {
+		value, err := c.MarkdownToPlate(ctx, "hi @alice\n", &platemd.Options{Disable: []string{"mentions"}})
+		if err != nil {
+			t.Fatalf("md->plate: %v", err)
+		}
+		for _, k := range asAnySlice(value[0]["children"]) {
+			if m, _ := k.(map[string]any); m["type"] == "mention" {
+				t.Errorf("disable=mentions should suppress mention parsing, got %+v", value)
+			}
+		}
+	})
+}
+
+func asAnySlice(v any) []any {
+	a, _ := v.([]any)
+	return a
+}
+
 func TestDisableOption(t *testing.T) {
 	c := newConverter(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

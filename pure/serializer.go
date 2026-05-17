@@ -372,6 +372,8 @@ func (s *serializer) inlines(children []any) {
 		switch cm["type"] {
 		case "a":
 			s.writeLink(cm)
+		case "mention":
+			s.writeMention(cm)
 		default:
 			// Unknown inline: emit its inline children.
 			s.inlines(asAny(cm["children"]))
@@ -419,6 +421,51 @@ func (s *serializer) writeLink(n Node) {
 	s.b.WriteString("](")
 	s.b.WriteString(url)
 	s.b.WriteByte(')')
+}
+
+// writeMention emits a Plate mention node as `[value](mention:encodedId)`,
+// matching @platejs/markdown's serializer. When the mentions category is
+// disabled, the value is written as plain `@value` text instead.
+func (s *serializer) writeMention(n Node) {
+	value, _ := n["value"].(string)
+	if disabled(s.opts, "mentions") {
+		s.b.WriteByte('@')
+		s.b.WriteString(value)
+		return
+	}
+	key, _ := n["key"].(string)
+	id := key
+	if id == "" {
+		id = value
+	}
+	s.b.WriteByte('[')
+	s.b.WriteString(value)
+	s.b.WriteString("](mention:")
+	s.b.WriteString(encodeMentionID(id))
+	s.b.WriteByte(')')
+}
+
+// encodeMentionID mirrors JS `encodeURIComponent(...).replace(/[()]/, ...)`
+// — that is, percent-escape every byte except the unreserved set
+// `A-Z a-z 0-9 - _ . ! ~ * '`.
+func encodeMentionID(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'A' && c <= 'Z',
+			c >= 'a' && c <= 'z',
+			c >= '0' && c <= '9',
+			c == '-', c == '_', c == '.', c == '!', c == '~', c == '*', c == '\'':
+			b.WriteByte(c)
+		default:
+			const hex = "0123456789ABCDEF"
+			b.WriteByte('%')
+			b.WriteByte(hex[c>>4])
+			b.WriteByte(hex[c&0x0f])
+		}
+	}
+	return b.String()
 }
 
 // ----- small helpers -----

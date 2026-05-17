@@ -61,6 +61,10 @@ func main() {
 				"| Go   | 2009 |\n" +
 				"| Rust | 2010 |\n",
 		},
+		{
+			name: "06-mentions",
+			md: "Hi @alice, please review with [@Jane Doe](mention:u_42).\n",
+		},
 	}
 
 	c, err := platemd.New()

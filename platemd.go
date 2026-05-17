@@ -26,7 +26,7 @@ type Node = map[string]any
 type Options struct {
 	// Disable removes whole plugin categories from the editor that will
 	// process this call. Valid categories: "basic", "marks", "lists",
-	// "links", "code", "tables", "media".
+	// "links", "code", "tables", "media", "mentions".
 	Disable []string `json:"disable,omitempty"`
 	// Markdown is forwarded into MarkdownPlugin.configure({ options: ... })
 	// on the JS side. See the @platejs/markdown docs for accepted keys

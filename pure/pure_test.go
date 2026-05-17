@@ -225,6 +225,7 @@ func TestFixtures(t *testing.T) {
 		"03-link-quote-code",
 		"04-image-and-rule",
 		"05-table",
+		"06-mentions",
 	}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -290,6 +291,180 @@ func indentJSON(b []byte) string {
 	}
 	out, _ := json.MarshalIndent(v, "", "  ")
 	return string(out)
+}
+
+func TestMentions_AtUsernameToPlate(t *testing.T) {
+	c := newConverter(t)
+	value, err := c.MarkdownToPlate(context.Background(), "Hello @alice and @bob_smith!\n", nil)
+	if err != nil {
+		t.Fatalf("md->plate: %v", err)
+	}
+	if len(value) != 1 || value[0]["type"] != "p" {
+		t.Fatalf("expected single paragraph, got %+v", value)
+	}
+	kids, _ := value[0]["children"].([]any)
+	// Expect: "Hello ", mention(alice), " and ", mention(bob_smith), "!"
+	mentions := 0
+	for _, k := range kids {
+		km, _ := k.(map[string]any)
+		if km["type"] == "mention" {
+			mentions++
+			if _, ok := km["value"].(string); !ok {
+				t.Errorf("mention missing value: %+v", km)
+			}
+		}
+	}
+	if mentions != 2 {
+		t.Errorf("expected 2 mentions, got %d in %+v", mentions, kids)
+	}
+}
+
+func TestMentions_LinkFormToPlate(t *testing.T) {
+	c := newConverter(t)
+	value, err := c.MarkdownToPlate(context.Background(),
+		"hi [@Jane Doe](mention:u_42), see [alice](mention:alice).\n", nil)
+	if err != nil {
+		t.Fatalf("md->plate: %v", err)
+	}
+	kids, _ := value[0]["children"].([]any)
+	var got []map[string]any
+	for _, k := range kids {
+		if km, _ := k.(map[string]any); km["type"] == "mention" {
+			got = append(got, km)
+		}
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 mentions, got %d in %+v", len(got), kids)
+	}
+	if got[0]["value"] != "@Jane Doe" || got[0]["key"] != "u_42" {
+		t.Errorf("mention[0] = %+v, want value=\"@Jane Doe\" key=\"u_42\"", got[0])
+	}
+	// Display label == id => key should be omitted (matches @platejs/markdown's rule).
+	if got[1]["value"] != "alice" {
+		t.Errorf("mention[1].value = %v, want \"alice\"", got[1]["value"])
+	}
+	if _, has := got[1]["key"]; has {
+		t.Errorf("mention[1] should have no key when display == id, got %+v", got[1])
+	}
+}
+
+func TestMentions_PlateToMarkdown(t *testing.T) {
+	c := newConverter(t)
+	value := []pure.Node{{"type": "p", "children": []any{
+		map[string]any{"text": "Hello "},
+		map[string]any{
+			"type": "mention", "value": "Jane Doe", "key": "u_42",
+			"children": []any{map[string]any{"text": ""}},
+		},
+		map[string]any{"text": " and "},
+		map[string]any{
+			"type": "mention", "value": "alice",
+			"children": []any{map[string]any{"text": ""}},
+		},
+		map[string]any{"text": "!"},
+	}}}
+	md, err := c.PlateToMarkdown(context.Background(), value, nil)
+	if err != nil {
+		t.Fatalf("plate->md: %v", err)
+	}
+	want := "Hello [Jane Doe](mention:u_42) and [alice](mention:alice)!\n"
+	if md != want {
+		t.Errorf("plate->md mismatch\n got: %q\nwant: %q", md, want)
+	}
+}
+
+func TestMentions_RoundTrip(t *testing.T) {
+	c := newConverter(t)
+	cases := []string{
+		"Hello [@Jane Doe](mention:u_42)!\n",
+		"cc [@alice](mention:alice) please\n",
+		"Plain @alice mention.\n",
+	}
+	for _, in := range cases {
+		t.Run(in, func(t *testing.T) {
+			value, err := c.MarkdownToPlate(context.Background(), in, nil)
+			if err != nil {
+				t.Fatalf("md->plate: %v", err)
+			}
+			// Verify at least one mention node was produced.
+			kids, _ := value[0]["children"].([]any)
+			seen := false
+			for _, k := range kids {
+				if m, _ := k.(map[string]any); m["type"] == "mention" {
+					seen = true
+					break
+				}
+			}
+			if !seen {
+				t.Fatalf("no mention produced from %q: %+v", in, value)
+			}
+			out, err := c.PlateToMarkdown(context.Background(), value, nil)
+			if err != nil {
+				t.Fatalf("plate->md: %v", err)
+			}
+			if !strings.Contains(out, "mention:") {
+				t.Errorf("serialized markdown missing `mention:` link: %q", out)
+			}
+		})
+	}
+}
+
+func TestMentions_NotInsideEmail(t *testing.T) {
+	c := newConverter(t)
+	value, err := c.MarkdownToPlate(context.Background(), "ping alice@example.com please\n", nil)
+	if err != nil {
+		t.Fatalf("md->plate: %v", err)
+	}
+	kids, _ := value[0]["children"].([]any)
+	for _, k := range kids {
+		if m, _ := k.(map[string]any); m["type"] == "mention" {
+			t.Errorf("mention should not fire inside email address: %+v", value)
+		}
+	}
+}
+
+func TestMentions_DisableCategory(t *testing.T) {
+	c := newConverter(t)
+	value, err := c.MarkdownToPlate(context.Background(),
+		"Hi @alice and [@bob](mention:bob)\n",
+		&pure.Options{Disable: []string{"mentions"}})
+	if err != nil {
+		t.Fatalf("md->plate: %v", err)
+	}
+	kids, _ := value[0]["children"].([]any)
+	for _, k := range kids {
+		if m, _ := k.(map[string]any); m["type"] == "mention" {
+			t.Errorf("disable=mentions should not emit mention nodes, got %+v", value)
+		}
+	}
+}
+
+func TestMentions_EncodedID(t *testing.T) {
+	c := newConverter(t)
+	// id contains characters that need URL escaping
+	value := []pure.Node{{"type": "p", "children": []any{
+		map[string]any{
+			"type": "mention", "value": "Jane", "key": "user 42/special",
+			"children": []any{map[string]any{"text": ""}},
+		},
+	}}}
+	md, err := c.PlateToMarkdown(context.Background(), value, nil)
+	if err != nil {
+		t.Fatalf("plate->md: %v", err)
+	}
+	want := "[Jane](mention:user%2042%2Fspecial)\n"
+	if md != want {
+		t.Errorf("plate->md mismatch\n got: %q\nwant: %q", md, want)
+	}
+	// And it parses back into the same key.
+	back, err := c.MarkdownToPlate(context.Background(), md, nil)
+	if err != nil {
+		t.Fatalf("md->plate: %v", err)
+	}
+	mnt, _ := back[0]["children"].([]any)[0].(map[string]any)
+	if mnt["type"] != "mention" || mnt["key"] != "user 42/special" {
+		t.Errorf("round-trip failed: %+v", mnt)
+	}
 }
 
 // jsonDeepEqual compares two values that came out of json.Unmarshal into

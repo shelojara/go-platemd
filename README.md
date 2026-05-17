@@ -104,7 +104,7 @@ func PlateToMarkdown(ctx, value []Node) (string, error)
 type Options struct {
     // Disable removes whole plugin categories from the editor that processes
     // this call. Valid categories: "basic", "marks", "lists", "links",
-    // "code", "tables", "media".
+    // "code", "tables", "media", "mentions".
     Disable []string
 
     // Markdown is forwarded into MarkdownPlugin.configure({ options: ... })
@@ -123,6 +123,16 @@ type Options struct {
 and serialize. Tables are nested as `table` → `tr` → `th`/`td` → `p`
 (see [examples/05-table.json](./examples/05-table.json)).
 
+User mentions (`@platejs/mention`) parse and serialize too. Both
+`@username` (bare token, alphanumerics/`_`/`-` only) and
+`[Display Name](mention:user-id)` (link form, arbitrary label and id)
+round-trip. The Plate node shape matches the upstream
+`@platejs/markdown` rule: `{ type: "mention", value, key?, children: [{
+text: "" }] }`, where `value` is the display label and `key` (when
+present) is the URL-decoded id from the link form. Disable with
+`Options.Disable: []string{"mentions"}`. See
+[examples/06-mentions.json](./examples/06-mentions.json).
+
 ## Examples
 
 A few worked pairs live in [`examples/`](./examples) so you can see what
@@ -136,6 +146,7 @@ the result of one `MarkdownToPlate` call on the default plugin set:
 | [03-link-quote-code.md](./examples/03-link-quote-code.md) | [03-link-quote-code.json](./examples/03-link-quote-code.json) | inline link, blockquote, fenced code block |
 | [04-image-and-rule.md](./examples/04-image-and-rule.md) | [04-image-and-rule.json](./examples/04-image-and-rule.json) | image (`img` with `caption`) and horizontal rule |
 | [05-table.md](./examples/05-table.md) | [05-table.json](./examples/05-table.json) | GFM table (`table` / `tr` / `th` / `td` nesting) |
+| [06-mentions.md](./examples/06-mentions.md) | [06-mentions.json](./examples/06-mentions.json) | user mentions: bare `@user` and `[label](mention:id)` link form |
 
 For instance, `01-formatting.md`:
 
