@@ -1,10 +1,10 @@
-// Smoke-test harness: instantiates the embedded WASM with a hard-coded
-// stdin payload and prints whatever it writes to stdout / stderr.
-// Not part of the library surface; lives under cmd/ for local debugging.
+// Smoke-test harness: opens a Worker against the embedded WASM and
+// sends a payload (default: a ping op, override via CLI args). Prints
+// the response and how long each phase took. Useful for poking at the
+// WASM blob without writing a Go test.
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -12,49 +12,50 @@ import (
 	"time"
 
 	platemd "github.com/shelojara/go-platemd-wasm"
-	"github.com/tetratelabs/wazero"
-	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 )
 
 func main() {
-	ctx := context.Background()
-
-	r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfig().WithCloseOnContextDone(true))
-	defer r.Close(ctx)
-	wasi_snapshot_preview1.MustInstantiate(ctx, r)
-
 	t0 := time.Now()
-	compiled, err := r.CompileModule(ctx, platemd.WasmBlob())
+	c, err := platemd.New()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "compile: %v\n", err)
+		fmt.Fprintln(os.Stderr, "New:", err)
 		os.Exit(1)
 	}
+	defer c.Close()
 	fmt.Fprintf(os.Stderr, "compile: %v\n", time.Since(t0))
 
-	payload := `{"op":"ping"}`
+	ctx := context.Background()
+	t1 := time.Now()
+	w, err := c.NewWorker(ctx)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "NewWorker:", err)
+		os.Exit(1)
+	}
+	defer w.Close()
+	fmt.Fprintf(os.Stderr, "worker boot: %v\n", time.Since(t1))
+
+	payload := "# Hello\n\nThis is **bold** text.\n\n- one\n- two\n"
 	if len(os.Args) > 1 {
 		payload = strings.Join(os.Args[1:], " ")
 	}
 
-	stdin := bytes.NewBufferString(payload)
-	var stdout, stderr bytes.Buffer
-
-	cfg := wazero.NewModuleConfig().
-		WithStdin(stdin).
-		WithStdout(&stdout).
-		WithStderr(&stderr).
-		WithArgs("plate.wasm")
-
-	t1 := time.Now()
-	mod, err := r.InstantiateModule(ctx, compiled, cfg)
+	t2 := time.Now()
+	value, err := w.MarkdownToPlate(ctx, payload, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "stderr=%s\n", stderr.String())
-		fmt.Fprintf(os.Stderr, "stdout=%s\n", stdout.String())
-		fmt.Fprintf(os.Stderr, "instantiate: %v\n", err)
+		fmt.Fprintln(os.Stderr, "MarkdownToPlate:", err)
 		os.Exit(1)
 	}
-	mod.Close(ctx)
-	fmt.Fprintf(os.Stderr, "run: %v\n", time.Since(t1))
-	fmt.Fprintf(os.Stderr, "stderr: %s\n", stderr.String())
-	fmt.Printf("%s\n", stdout.String())
+	fmt.Fprintf(os.Stderr, "md->plate: %v\n", time.Since(t2))
+
+	t3 := time.Now()
+	md, err := w.PlateToMarkdown(ctx, value, nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "PlateToMarkdown:", err)
+		os.Exit(1)
+	}
+	fmt.Fprintf(os.Stderr, "plate->md: %v\n", time.Since(t3))
+
+	fmt.Printf("in:\n%s\n", payload)
+	fmt.Printf("\nout (md->plate, %d nodes):\n%+v\n", len(value), value)
+	fmt.Printf("\nout (plate->md):\n%s\n", md)
 }

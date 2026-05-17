@@ -38,16 +38,26 @@ The `.wasm` blob is checked into the repo, so `go get` is all you need.
 func New() (*Converter, error)
 func (*Converter) Close() error
 
-// Single conversions. nil Options uses the default plugin set.
+// Single conversions. Each call boots a fresh JS engine (~400ms). For
+// repeated calls, use a Worker (see below).
 func (*Converter) MarkdownToPlate(ctx, md string, *Options) ([]Node, error)
 func (*Converter) PlateToMarkdown(ctx, value []Node, *Options) (string, error)
 
-// Batch packs many ops into one WASM invocation, amortizing the ~400ms
-// JS-runtime startup across the whole batch.
+// Batch packs many ops into one WASM invocation, amortizing the JS
+// engine boot across the whole batch.
 func (*Converter) Batch(ctx, []BatchOp) ([]BatchResult, error)
 
+// Worker — keep one WASM instance alive for low-latency repeated calls.
+// Pays the ~400ms boot once at NewWorker(); each subsequent call is
+// single-digit milliseconds.
+func (*Converter) NewWorker(ctx) (*Worker, error)
+func (*Worker) MarkdownToPlate(ctx, md string, *Options) ([]Node, error)
+func (*Worker) PlateToMarkdown(ctx, value []Node, *Options) (string, error)
+func (*Worker) Batch(ctx, []BatchOp) ([]BatchResult, error)
+func (*Worker) Close() error
+
 // Throwaway one-shot helpers — convenient, but they compile a fresh WASM
-// module every time. Prefer New() + reuse for hot paths.
+// module every time. Prefer New() + Worker for hot paths.
 func MarkdownToPlate(ctx, md string) ([]Node, error)
 func PlateToMarkdown(ctx, value []Node) (string, error)
 ```
@@ -70,17 +80,68 @@ type Options struct {
 
 ## Performance
 
-Rough numbers on `linux/amd64`:
+Two things make `Worker` dramatically faster than the one-shot `Converter`
+path:
 
-| Phase                         | Cost      |
-|-------------------------------|-----------|
-| `New()` — wazero compile      | ~600 ms   |
-| Single call — JS engine boot  | ~400–700 ms |
-| Single call — actual work     | a few ms  |
-| Batch of N — fixed cost       | one engine boot for the whole batch |
+1. The QuickJS runtime is loaded once at `NewWorker()` and reused for
+   every subsequent call — no per-call WASM instantiation.
+2. The default Plate editor (with all plugins) is constructed once at
+   JS module load and reused across calls; only calls that pass
+   `*Options` build a fresh editor.
 
-If you're converting thousands of documents, batch them. If you do one
-conversion per request, the JS boot dominates.
+Workers serialize their calls with an internal mutex (one in-flight
+request at a time). For parallel throughput, create one `*Worker` per
+goroutine.
+
+```go
+c, _ := platemd.New()
+defer c.Close()
+
+w, _ := c.NewWorker(ctx)   // one-time ~950ms boot
+defer w.Close()
+
+for _, doc := range docs {
+    value, _ := w.MarkdownToPlate(ctx, doc, nil)  // ~14ms each
+    // ...
+}
+```
+
+### Benchmark results
+
+Measured on `linux/amd64` (Intel Xeon @ 2.8 GHz), `go test -bench`:
+
+```
+BenchmarkConverter_MdToPlate_Small        965 ms/op
+BenchmarkConverter_PlateToMd_Small       1159 ms/op
+BenchmarkConverter_Batch10               1082 ms/op   (108 ms per inner op)
+
+BenchmarkWorker_MdToPlate_Small            14 ms/op   << fast path
+BenchmarkWorker_MdToPlate_Medium          488 ms/op   (~10× larger doc)
+BenchmarkWorker_PlateToMd_Small           230 ms/op
+BenchmarkWorker_Batch10                   148 ms/op   (15 ms per inner op)
+BenchmarkWorker_BatchPlateToMd10         2261 ms/op   (226 ms per inner op)
+
+BenchmarkNew                              707 ms/op   (one-time, per process)
+BenchmarkNewWorker                        942 ms/op   (one-time, per worker)
+```
+
+Headlines:
+
+- `Worker.MarkdownToPlate` on a small document is **~70× faster** than
+  `Converter.MarkdownToPlate` (14 ms vs 965 ms). Most of the one-shot
+  cost is just booting the JS engine.
+- `plate → md` is consistently the slower direction — `markdown.serialize`
+  walks the document with every plugin's rule chain, and that cost is
+  per-call rather than once-per-process. Batching does not amortize it
+  (it's per-op, not per-boot).
+- `Converter.Batch10` shows the one-shot batch story: a single engine
+  boot covers 10 ops, so each op effectively costs ~108 ms.
+
+Re-run them yourself:
+
+```sh
+go test -run=^$ -bench=. -benchtime=10x -count=1 ./...
+```
 
 ## How it works
 
@@ -95,9 +156,13 @@ conversion per request, the JS boot dominates.
 
 1. `js/src/index.mjs` instantiates a headless Plate editor with the
    markdown plugin plus a curated set of element plugins (headings,
-   lists, links, code blocks, tables, media, basic marks). It reads one
-   JSON request from stdin, runs the conversion, and writes one JSON
-   response to stdout.
+   lists, links, code blocks, tables, media, basic marks). The editor
+   is built once at module load. The JS then sits in a `while(true)`
+   loop, reading one length-framed JSON request from stdin, running the
+   conversion, and writing one length-framed JSON response to stdout.
+   The loop exits when stdin reaches EOF — so the same WASM blob serves
+   both one-shot mode (Go writes one frame and closes stdin) and worker
+   mode (Go keeps the pipe open).
 2. `esbuild` bundles that into a single file, with shims for `react`,
    `react-dom`, browser globals (`document`, `crypto.getRandomValues`,
    etc.) that Plate touches at import time but never invokes during

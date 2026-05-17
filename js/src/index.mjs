@@ -1,6 +1,8 @@
-// JS entry compiled to WASM by Javy. Communicates with the Go host via JSON
-// on stdin/stdout. One invocation processes one top-level request, which is
-// either a single op `{op, ...}` or a batch `{ops: [...]}`.
+// JS entry compiled to WASM by Javy. Talks length-framed JSON to the Go host:
+// each message is a 4-byte big-endian length prefix followed by that many
+// bytes of UTF-8 JSON. The loop runs until stdin reaches EOF, so the same
+// build serves both one-shot mode (Go writes one frame then closes stdin)
+// and worker mode (Go keeps the pipe open for many frames).
 
 import { createSlateEditor } from "platejs";
 import { MarkdownPlugin } from "@platejs/markdown";
@@ -37,10 +39,9 @@ import {
   BaseMediaEmbedPlugin,
 } from "@platejs/media";
 
-// The default plugin set covers everything @platejs/markdown's built-in rules
-// can serialize / deserialize. A consumer can disable a category via
-// `options.disable = ["lists", "tables", ...]` or pass plugin-specific
-// configuration via `options.pluginOptions = { ... }`.
+// Plugin categories. Consumers can drop whole categories per call via
+// `options.disable`. Math is intentionally excluded — KaTeX has DOM-load
+// code that crashes under Javy.
 const PLUGIN_CATEGORIES = {
   basic: [BaseBasicBlocksPlugin, BaseHeadingPlugin, BaseBlockquotePlugin, BaseHorizontalRulePlugin],
   marks: [
@@ -58,37 +59,15 @@ const PLUGIN_CATEGORIES = {
   media: [BaseImagePlugin, BaseAudioPlugin, BaseVideoPlugin, BaseFilePlugin, BaseMediaEmbedPlugin],
 };
 
-const readAllStdin = () => {
-  const chunks = [];
-  const buf = new Uint8Array(8192);
-  while (true) {
-    const n = Javy.IO.readSync(0, buf);
-    if (n === 0) break;
-    chunks.push(buf.slice(0, n));
-  }
-  let total = 0;
-  for (const c of chunks) total += c.length;
-  const all = new Uint8Array(total);
-  let off = 0;
-  for (const c of chunks) {
-    all.set(c, off);
-    off += c.length;
-  }
-  return new TextDecoder().decode(all);
+const allDefaultPlugins = () => {
+  const out = [];
+  for (const plugins of Object.values(PLUGIN_CATEGORIES)) for (const p of plugins) out.push(p);
+  return out;
 };
-
-const writeStdout = (str) => {
-  Javy.IO.writeSync(1, new TextEncoder().encode(str));
-};
-
-const errPayload = (e) => ({
-  ok: false,
-  error: e && e.message ? e.message : String(e),
-  stack: e && e.stack ? e.stack : undefined,
-});
 
 const selectPlugins = (options) => {
-  const disable = new Set(Array.isArray(options?.disable) ? options.disable : []);
+  if (!options?.disable || !options.disable.length) return allDefaultPlugins();
+  const disable = new Set(options.disable);
   const out = [];
   for (const [name, plugins] of Object.entries(PLUGIN_CATEGORIES)) {
     if (disable.has(name)) continue;
@@ -102,58 +81,99 @@ const buildMarkdownPlugin = (options) => {
   return mdOpts ? MarkdownPlugin.configure({ options: mdOpts }) : MarkdownPlugin;
 };
 
-const buildEditor = (options) => {
-  const plugins = [...selectPlugins(options), buildMarkdownPlugin(options)];
-  return createSlateEditor({ plugins });
+const buildEditor = (options) =>
+  createSlateEditor({ plugins: [...selectPlugins(options), buildMarkdownPlugin(options)] });
+
+// Built once at module load — this is the big latency win. Calls that
+// pass no `options` reuse this editor across the entire process lifetime.
+const defaultEditor = buildEditor();
+
+const resetEditor = (editor) => {
+  // Slate's value lives in editor.children. Resetting it is enough for
+  // headless serialize / deserialize; selection / history are unused.
+  editor.children = [];
 };
 
+const errPayload = (e) => ({
+  ok: false,
+  error: e && e.message ? e.message : String(e),
+  stack: e && e.stack ? e.stack : undefined,
+});
+
 const handleOp = (op) => {
+  const editor = op.options ? buildEditor(op.options) : defaultEditor;
   switch (op.op) {
     case "md_to_plate": {
-      const editor = buildEditor(op.options);
+      resetEditor(editor);
       const value = editor.api.markdown.deserialize(op.md || "");
       return { ok: true, data: value };
     }
     case "plate_to_md": {
-      const editor = buildEditor(op.options);
-      if (Array.isArray(op.plate)) editor.children = op.plate;
+      editor.children = Array.isArray(op.plate) ? op.plate : [];
       const md = editor.api.markdown.serialize();
       return { ok: true, data: md };
     }
-    case "ping": {
+    case "ping":
       return { ok: true, data: "pong" };
-    }
     default:
       return { ok: false, error: `unknown op: ${op.op}` };
   }
 };
 
-(() => {
-  let req;
-  try {
-    req = JSON.parse(readAllStdin());
-  } catch (e) {
-    writeStdout(JSON.stringify({ ok: false, error: `request parse: ${e.message}` }));
-    return;
-  }
-
+const handleRequest = (req) => {
   if (Array.isArray(req?.ops)) {
     const results = req.ops.map((op) => {
-      try {
-        return handleOp(op);
-      } catch (e) {
-        return errPayload(e);
-      }
+      try { return handleOp(op); } catch (e) { return errPayload(e); }
     });
-    writeStdout(JSON.stringify({ ok: true, results }));
-    return;
+    return { ok: true, results };
   }
+  try { return handleOp(req); } catch (e) { return errPayload(e); }
+};
 
-  let result;
-  try {
-    result = handleOp(req);
-  } catch (e) {
-    result = errPayload(e);
+// ---------------- framing ----------------
+
+const readExact = (n) => {
+  const buf = new Uint8Array(n);
+  let read = 0;
+  while (read < n) {
+    const got = Javy.IO.readSync(0, buf.subarray(read));
+    if (got === 0) return null; // EOF
+    read += got;
   }
-  writeStdout(JSON.stringify(result));
-})();
+  return buf;
+};
+
+const readFrame = () => {
+  const header = readExact(4);
+  if (header === null) return null;
+  const len = (header[0] << 24) | (header[1] << 16) | (header[2] << 8) | header[3];
+  if (len === 0) return ""; // explicit empty frame
+  const body = readExact(len);
+  if (body === null) return null;
+  return new TextDecoder().decode(body);
+};
+
+const writeFrame = (str) => {
+  const bytes = new TextEncoder().encode(str);
+  const header = new Uint8Array(4);
+  header[0] = (bytes.length >>> 24) & 0xff;
+  header[1] = (bytes.length >>> 16) & 0xff;
+  header[2] = (bytes.length >>> 8) & 0xff;
+  header[3] = bytes.length & 0xff;
+  Javy.IO.writeSync(1, header);
+  if (bytes.length) Javy.IO.writeSync(1, bytes);
+};
+
+// ---------------- main loop ----------------
+
+while (true) {
+  const reqStr = readFrame();
+  if (reqStr === null) break; // stdin closed
+  let resp;
+  try {
+    resp = handleRequest(JSON.parse(reqStr));
+  } catch (e) {
+    resp = { ok: false, error: `request parse: ${e.message}` };
+  }
+  writeFrame(JSON.stringify(resp));
+}
