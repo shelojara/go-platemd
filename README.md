@@ -181,38 +181,38 @@ goroutine.
 c, _ := platemd.New()
 defer c.Close()
 
-w, _ := c.NewWorker(ctx)   // one-time ~950ms boot
+w, _ := c.NewWorker(ctx)   // one-time ~800ms boot
 defer w.Close()
 
 for _, doc := range docs {
-    value, _ := w.MarkdownToPlate(ctx, doc, nil)  // ~14ms each
+    value, _ := w.MarkdownToPlate(ctx, doc, nil)  // ~25ms each
     // ...
 }
 ```
 
 ### Benchmark results
 
-Measured on `linux/amd64` (Intel Xeon @ 2.1 GHz), `go test -bench`:
+Measured on `linux/amd64` (Intel Xeon @ 2.8 GHz), `go test -bench`:
 
 ```
-BenchmarkConverter_MdToPlate_Small        641 ms/op
-BenchmarkConverter_PlateToMd_Small        809 ms/op
-BenchmarkConverter_Batch10                781 ms/op   (~78 ms per inner op)
+BenchmarkConverter_MdToPlate_Small        805 ms/op
+BenchmarkConverter_PlateToMd_Small       1026 ms/op
+BenchmarkConverter_Batch10               1080 ms/op   (~108 ms per inner op)
 
-BenchmarkWorker_MdToPlate_Small            17 ms/op   << fast path
-BenchmarkWorker_MdToPlate_Medium          367 ms/op   (~10× larger doc)
-BenchmarkWorker_PlateToMd_Small           192 ms/op
-BenchmarkWorker_Batch10                   130 ms/op   (~13 ms per inner op)
-BenchmarkWorker_BatchPlateToMd10         1884 ms/op   (~188 ms per inner op)
+BenchmarkWorker_MdToPlate_Small            25 ms/op   << fast path
+BenchmarkWorker_MdToPlate_Medium          657 ms/op   (~10× larger doc)
+BenchmarkWorker_PlateToMd_Small           237 ms/op
+BenchmarkWorker_Batch10                   271 ms/op   (~27 ms per inner op)
+BenchmarkWorker_BatchPlateToMd10         2376 ms/op   (~238 ms per inner op)
 
-BenchmarkNew                              578 ms/op   (one-time, per process)
-BenchmarkNewWorker                        626 ms/op   (one-time, per worker)
+BenchmarkNew                              701 ms/op   (one-time, per process)
+BenchmarkNewWorker                        803 ms/op   (one-time, per worker)
 ```
 
 Headlines:
 
-- `Worker.MarkdownToPlate` on a small document is **~70× faster** than
-  `Converter.MarkdownToPlate` (14 ms vs 965 ms). Most of the one-shot
+- `Worker.MarkdownToPlate` on a small document is **~32× faster** than
+  `Converter.MarkdownToPlate` (25 ms vs 805 ms). Most of the one-shot
   cost is just booting the JS engine.
 - `plate → md` is consistently the slower direction — `markdown.serialize`
   walks the document with every plugin's rule chain, and that cost is
@@ -220,6 +220,10 @@ Headlines:
   (it's per-op, not per-boot).
 - `Converter.Batch10` shows the one-shot batch story: a single engine
   boot covers 10 ops, so each op effectively costs ~108 ms.
+- `remark-gfm` is on by default. It adds ~20–40% to `md → plate` parsing
+  (a small doc goes from ~20 ms to ~25 ms on a Worker; a 3 KB doc from
+  ~470 ms to ~660 ms). Serialization, engine boot, and worker boot are
+  unaffected.
 
 Re-run them yourself:
 
