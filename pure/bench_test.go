@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/shelojara/go-platemd-wasm/pure"
+	"github.com/shelojara/go-platemd/pure"
 )
 
 const smallMd = `# Title

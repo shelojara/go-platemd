@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	platemd "github.com/shelojara/go-platemd-wasm"
+	platemd "github.com/shelojara/go-platemd"
 )
 
 func TestConverter_DefaultOptions(t *testing.T) {

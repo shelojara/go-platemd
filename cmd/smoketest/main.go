@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	platemd "github.com/shelojara/go-platemd-wasm"
+	platemd "github.com/shelojara/go-platemd"
 )
 
 func main() {
