@@ -1,0 +1,39 @@
+[
+  {
+    "children": [
+      {
+        "text": "Welcome"
+      }
+    ],
+    "type": "h1"
+  },
+  {
+    "children": [
+      {
+        "text": "This paragraph has "
+      },
+      {
+        "bold": true,
+        "text": "bold"
+      },
+      {
+        "text": ", "
+      },
+      {
+        "italic": true,
+        "text": "italic"
+      },
+      {
+        "text": ", and "
+      },
+      {
+        "code": true,
+        "text": "inline code"
+      },
+      {
+        "text": " text."
+      }
+    ],
+    "type": "p"
+  }
+]

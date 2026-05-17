@@ -105,6 +105,53 @@ type Options struct {
 }
 ```
 
+## Examples
+
+A few worked pairs live in [`examples/`](./examples) so you can see what
+the Plate JSON looks like for common markdown shapes. Each file pair is
+the result of one `MarkdownToPlate` call on the default plugin set:
+
+| Markdown | JSON | What it covers |
+| --- | --- | --- |
+| [01-formatting.md](./examples/01-formatting.md) | [01-formatting.json](./examples/01-formatting.json) | heading + paragraph with `bold` / `italic` / `code` marks |
+| [02-lists.md](./examples/02-lists.md) | [02-lists.json](./examples/02-lists.json) | unordered + ordered lists (indent-based `listStyleType` shape) |
+| [03-link-quote-code.md](./examples/03-link-quote-code.md) | [03-link-quote-code.json](./examples/03-link-quote-code.json) | inline link, blockquote, fenced code block |
+| [04-image-and-rule.md](./examples/04-image-and-rule.md) | [04-image-and-rule.json](./examples/04-image-and-rule.json) | image (`img` with `caption`) and horizontal rule |
+
+For instance, `01-formatting.md`:
+
+```md
+# Welcome
+
+This paragraph has **bold**, *italic*, and `inline code` text.
+```
+
+becomes:
+
+```json
+[
+  { "type": "h1", "children": [{ "text": "Welcome" }] },
+  {
+    "type": "p",
+    "children": [
+      { "text": "This paragraph has " },
+      { "text": "bold", "bold": true },
+      { "text": ", " },
+      { "text": "italic", "italic": true },
+      { "text": ", and " },
+      { "text": "inline code", "code": true },
+      { "text": " text." }
+    ]
+  }
+]
+```
+
+Regenerate the fixtures after changing the plugin set with:
+
+```sh
+go run ./cmd/gen-examples
+```
+
 ## Performance
 
 Two things make `Worker` dramatically faster than the one-shot `Converter`
