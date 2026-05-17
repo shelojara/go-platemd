@@ -8,6 +8,15 @@ embedded in the binary, and executed in-process by the pure-Go
 
 No Node.js or CGO at runtime. A single static Go binary ships everything.
 
+> **Looking for a smaller, faster path?** A sibling [`pure/`](./pure)
+> package implements the same conversion in idiomatic Go on top of
+> [goldmark](https://github.com/yuin/goldmark) — no WASM, no embedded
+> JS, no ~700ms startup, and ~600× faster per call. It matches the
+> WASM backend's Plate node shapes for the fixtures in [`examples/`](./examples).
+> Use it when you don't need the exact `@platejs/markdown`
+> serialization for round-trip parity with the JS editor. See
+> [pure/README quickstart](#pure-go-implementation) below.
+
 ```go
 import platemd "github.com/shelojara/go-platemd-wasm"
 
@@ -289,6 +298,43 @@ That runs `esbuild` then `javy build` and overwrites `internal/wasm/plate.wasm`.
 - **Lossy edges.** `remark-stringify` normalizes output (italic `*…*`
   becomes `_…_`, unordered list `-` becomes `*`, etc.). Content
   round-trips; exact byte equality does not.
+
+## Pure-Go implementation
+
+The [`pure/`](./pure) subpackage implements the same conversion without
+any WASM. It uses [goldmark](https://github.com/yuin/goldmark) with the
+GFM extension to parse markdown, then lowers the AST to the same Plate
+node shapes the WASM backend emits. Quick comparison on `linux/amd64`:
+
+| | `MarkdownToPlate` (small doc) | `PlateToMarkdown` (small doc) | Startup |
+| --- | --- | --- | --- |
+| WASM `Converter` | ~805 ms | ~1,026 ms | ~700 ms |
+| WASM `Worker` (after boot) | ~25 ms | ~237 ms | ~800 ms |
+| `pure.Converter` | **~43 µs** | **~3 µs** | none |
+
+Usage:
+
+```go
+import platepure "github.com/shelojara/go-platemd-wasm/pure"
+
+c, _ := platepure.New()
+defer c.Close()
+
+value, _ := c.MarkdownToPlate(ctx, "# Hello\n\nWorld **here**.\n", nil)
+md, _    := c.PlateToMarkdown(ctx, value, nil)
+```
+
+Tradeoffs:
+
+- **No `Options.Markdown` map** — that's a JS-side configuration knob
+  with no analogue. `Options.Disable` still works.
+- **No remark-stringify parity** — the serializer follows the same
+  basic normalization (italic as `_…_`, unordered lists as `* `), but
+  corner cases (escaping, link titles, mixed marks, exact table column
+  widths) may diverge. Use the WASM backend if you need byte-identical
+  output to a JS Plate editor.
+- **No Worker** — every call is microseconds, so there's nothing to
+  amortize.
 
 ## License
 
