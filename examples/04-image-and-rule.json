@@ -1,0 +1,40 @@
+[
+  {
+    "children": [
+      {
+        "text": "Here is a logo:"
+      }
+    ],
+    "type": "p"
+  },
+  {
+    "caption": [
+      {
+        "text": "Go gopher"
+      }
+    ],
+    "children": [
+      {
+        "text": ""
+      }
+    ],
+    "type": "img",
+    "url": "https://go.dev/images/gophers/ladder.svg"
+  },
+  {
+    "children": [
+      {
+        "text": ""
+      }
+    ],
+    "type": "hr"
+  },
+  {
+    "children": [
+      {
+        "text": "And a paragraph after the rule."
+      }
+    ],
+    "type": "p"
+  }
+]

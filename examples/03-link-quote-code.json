@@ -1,0 +1,81 @@
+[
+  {
+    "children": [
+      {
+        "text": "Read the "
+      },
+      {
+        "children": [
+          {
+            "text": "Plate docs"
+          }
+        ],
+        "type": "a",
+        "url": "https://platejs.org/"
+      },
+      {
+        "text": " for more."
+      }
+    ],
+    "type": "p"
+  },
+  {
+    "children": [
+      {
+        "children": [
+          {
+            "text": "Markdown is just plain text with conventions."
+          }
+        ],
+        "type": "p"
+      }
+    ],
+    "type": "blockquote"
+  },
+  {
+    "children": [
+      {
+        "children": [
+          {
+            "text": "package main"
+          }
+        ],
+        "type": "code_line"
+      },
+      {
+        "children": [
+          {
+            "text": ""
+          }
+        ],
+        "type": "code_line"
+      },
+      {
+        "children": [
+          {
+            "text": "func main() {"
+          }
+        ],
+        "type": "code_line"
+      },
+      {
+        "children": [
+          {
+            "text": "\tfmt.Println(\"hi\")"
+          }
+        ],
+        "type": "code_line"
+      },
+      {
+        "children": [
+          {
+            "text": "}"
+          }
+        ],
+        "type": "code_line"
+      }
+    ],
+    "lang": "go",
+    "type": "code_block"
+  }
+]

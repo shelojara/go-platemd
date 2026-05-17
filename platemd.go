@@ -29,7 +29,12 @@ type Options struct {
 	// "links", "code", "tables", "media".
 	Disable []string `json:"disable,omitempty"`
 	// Markdown is forwarded into MarkdownPlugin.configure({ options: ... })
-	// on the JS side. See the @platejs/markdown docs for accepted keys.
+	// on the JS side. See the @platejs/markdown docs for accepted keys
+	// (allowedNodes, disallowedNodes, rules, remarkStringifyOptions, ...).
+	// remarkPlugins cannot be set from Go — plugin functions don't survive
+	// the JSON boundary. The bundled remark plugin set (currently just
+	// remark-gfm, so GFM tables / strikethrough / task lists / autolinks
+	// all work out of the box) is fixed at build time in js/src/index.mjs.
 	Markdown map[string]any `json:"markdown,omitempty"`
 }
 

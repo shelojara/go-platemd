@@ -1,0 +1,81 @@
+[
+  {
+    "children": [
+      {
+        "text": "Shopping list"
+      }
+    ],
+    "type": "h2"
+  },
+  {
+    "children": [
+      {
+        "text": "apples"
+      }
+    ],
+    "indent": 1,
+    "listStyleType": "disc",
+    "type": "p"
+  },
+  {
+    "children": [
+      {
+        "text": "bread"
+      }
+    ],
+    "indent": 1,
+    "listStyleType": "disc",
+    "type": "p"
+  },
+  {
+    "children": [
+      {
+        "text": "coffee"
+      }
+    ],
+    "indent": 1,
+    "listStyleType": "disc",
+    "type": "p"
+  },
+  {
+    "children": [
+      {
+        "text": "Steps"
+      }
+    ],
+    "type": "h2"
+  },
+  {
+    "children": [
+      {
+        "text": "Wake up"
+      }
+    ],
+    "indent": 1,
+    "listStart": 1,
+    "listStyleType": "decimal",
+    "type": "p"
+  },
+  {
+    "children": [
+      {
+        "text": "Make coffee"
+      }
+    ],
+    "indent": 1,
+    "listStart": 2,
+    "listStyleType": "decimal",
+    "type": "p"
+  },
+  {
+    "children": [
+      {
+        "text": "Ship it"
+      }
+    ],
+    "indent": 1,
+    "listStart": 3,
+    "listStyleType": "decimal",
+    "type": "p"
+  }
+]
