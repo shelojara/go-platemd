@@ -29,7 +29,34 @@ md, err := c.PlateToMarkdown(ctx, value, nil)
 go get github.com/shelojara/go-platemd-wasm
 ```
 
-The `.wasm` blob is checked into the repo, so `go get` is all you need.
+The `.wasm` blob (~3 MB) is checked into the repo, so `go get` is all you need.
+
+### Default options
+
+If every conversion in your process should share the same plugin /
+markdown settings, set them once at construction time. Per-call options
+still override field-by-field:
+
+```go
+c, _ := platemd.New(platemd.WithDefaultOptions(platemd.Options{
+    Disable:  []string{"tables", "media"},   // strip these out by default
+    Markdown: map[string]any{
+        // anything accepted by MarkdownPlugin.configure({ options: ... })
+    },
+}))
+defer c.Close()
+
+// Uses the defaults — fast path on a Worker (cached editor).
+value, _ := c.MarkdownToPlate(ctx, md, nil)
+
+// Per-call override: this call re-enables tables, defaults untouched
+// for other calls.
+value2, _ := c.MarkdownToPlate(ctx, md, &platemd.Options{Disable: nil})
+```
+
+A Worker created from a Converter inherits the defaults via a one-shot
+`set_defaults` op at startup — so default-options calls hit the cached
+editor, no per-call rebuild.
 
 ## API
 
@@ -108,21 +135,21 @@ for _, doc := range docs {
 
 ### Benchmark results
 
-Measured on `linux/amd64` (Intel Xeon @ 2.8 GHz), `go test -bench`:
+Measured on `linux/amd64` (Intel Xeon @ 2.1 GHz), `go test -bench`:
 
 ```
-BenchmarkConverter_MdToPlate_Small        965 ms/op
-BenchmarkConverter_PlateToMd_Small       1159 ms/op
-BenchmarkConverter_Batch10               1082 ms/op   (108 ms per inner op)
+BenchmarkConverter_MdToPlate_Small        641 ms/op
+BenchmarkConverter_PlateToMd_Small        809 ms/op
+BenchmarkConverter_Batch10                781 ms/op   (~78 ms per inner op)
 
-BenchmarkWorker_MdToPlate_Small            14 ms/op   << fast path
-BenchmarkWorker_MdToPlate_Medium          488 ms/op   (~10× larger doc)
-BenchmarkWorker_PlateToMd_Small           230 ms/op
-BenchmarkWorker_Batch10                   148 ms/op   (15 ms per inner op)
-BenchmarkWorker_BatchPlateToMd10         2261 ms/op   (226 ms per inner op)
+BenchmarkWorker_MdToPlate_Small            17 ms/op   << fast path
+BenchmarkWorker_MdToPlate_Medium          367 ms/op   (~10× larger doc)
+BenchmarkWorker_PlateToMd_Small           192 ms/op
+BenchmarkWorker_Batch10                   130 ms/op   (~13 ms per inner op)
+BenchmarkWorker_BatchPlateToMd10         1884 ms/op   (~188 ms per inner op)
 
-BenchmarkNew                              707 ms/op   (one-time, per process)
-BenchmarkNewWorker                        942 ms/op   (one-time, per worker)
+BenchmarkNew                              578 ms/op   (one-time, per process)
+BenchmarkNewWorker                        626 ms/op   (one-time, per worker)
 ```
 
 Headlines:
@@ -189,11 +216,15 @@ That runs `esbuild` then `javy build` and overwrites `internal/wasm/plate.wasm`.
   module-load code that assumes a real DOM (`document.compatMode` etc.)
   and crashes under Javy. Math is not in the default plugin set;
   re-enabling it needs a more thorough KaTeX stub.
+- **No MDX.** The build stubs out `remark-mdx` / `mdast-util-mdx` to
+  drop ~300 KB of acorn + micromark extensions. Plain markdown is fine;
+  documents containing JSX or MDX expressions are not parsed as MDX.
 - **No custom Plate plugins from Go.** You can disable categories and
   pass `MarkdownPlugin` options, but adding a wholly new plugin requires
   editing `js/src/index.mjs` and rebuilding.
-- **Startup-bound.** Each call boots a QuickJS instance with the full
-  Plate bundle (~400 ms). Use `Batch()` for throughput.
+- **One-shot path is startup-bound.** Each `*Converter` call boots a
+  QuickJS instance with the Plate bundle. Use a `*Worker` (or
+  `Batch()`) for throughput.
 - **Lossy edges.** `remark-stringify` normalizes output (italic `*…*`
   becomes `_…_`, unordered list `-` becomes `*`, etc.). Content
   round-trips; exact byte equality does not.

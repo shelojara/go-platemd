@@ -18,6 +18,7 @@ await build({
   platform: "neutral",
   target: "es2020",
   outfile: resolve(here, "dist/bundle.js"),
+  minify: true,
   mainFields: ["browser", "module", "main"],
   conditions: ["browser", "import", "default"],
   external: [],
@@ -29,6 +30,19 @@ await build({
     "react-dom": resolve(here, "src/shim/react-dom.mjs"),
     "react-dom/client": resolve(here, "src/shim/react-dom.mjs"),
     "react-compiler-runtime": resolve(here, "src/shim/react-compiler-runtime.mjs"),
+    // DOM-only Slate helpers — headless serialize / deserialize never
+    // touches them. Stub with the right named exports.
+    "slate-dom": resolve(here, "src/shim/slate-dom.mjs"),
+    "slate-hyperscript": resolve(here, "src/shim/slate-hyperscript.mjs"),
+    "is-hotkey": resolve(here, "src/shim/is-hotkey.mjs"),
+    // `marked` is listed as a dep on @platejs/markdown but the plugin
+    // parses via remark/unified, not marked. Stub it to a throw-on-call.
+    "marked": resolve(here, "src/shim/marked.mjs"),
+    // MDX (markdown + JSX) is unused. Stubbing remark-mdx and
+    // mdast-util-mdx kills the whole acorn / micromark-extension-mdx-*
+    // chain (~300 KB of JS source).
+    "remark-mdx": resolve(here, "src/shim/remark-mdx.mjs"),
+    "mdast-util-mdx": resolve(here, "src/shim/mdast-util-mdx.mjs"),
   },
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),

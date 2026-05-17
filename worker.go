@@ -24,6 +24,12 @@ type Worker struct {
 	stdinW  *io.PipeWriter
 	stdoutR *io.PipeReader
 
+	// defaults mirrors the Converter's defaults. Per-call options on Worker
+	// methods are merged with these field-by-field on the Go side before
+	// being sent — but if the caller passes nil, no options field is sent
+	// at all so the JS uses its already-configured cached editor.
+	defaults *Options
+
 	mu sync.Mutex
 
 	doneOnce sync.Once
@@ -71,7 +77,10 @@ func (c *Converter) NewWorker(ctx context.Context) (*Worker, error) {
 		}
 	}()
 
-	// Issue the warm-up ping.
+	// Issue the warm-up ping. If the parent Converter has defaults set,
+	// follow with a set_defaults so the cached editor inside JS is
+	// rebuilt with those defaults — that preserves the fast path for
+	// subsequent calls that don't pass per-call overrides.
 	if err := writeFrameTo(stdinW, []byte(`{"op":"ping"}`)); err != nil {
 		_ = w.Close()
 		return nil, fmt.Errorf("worker warm-up write: %w", err)
@@ -90,15 +99,49 @@ func (c *Converter) NewWorker(ctx context.Context) (*Worker, error) {
 		_ = w.Close()
 		return nil, fmt.Errorf("worker warm-up: %s", res.Error)
 	}
+
+	if c.defaults != nil {
+		w.defaults = c.defaults
+		payload, _ := json.Marshal(opRequest{Op: "set_defaults", Options: c.defaults})
+		if err := writeFrameTo(stdinW, payload); err != nil {
+			_ = w.Close()
+			return nil, fmt.Errorf("worker set_defaults write: %w", err)
+		}
+		body, err := readFrameFrom(stdoutR)
+		if err != nil {
+			_ = w.Close()
+			return nil, fmt.Errorf("worker set_defaults read: %w", err)
+		}
+		var r wireResult
+		if err := json.Unmarshal(body, &r); err != nil {
+			_ = w.Close()
+			return nil, fmt.Errorf("worker set_defaults parse: %w", err)
+		}
+		if !r.OK {
+			_ = w.Close()
+			return nil, fmt.Errorf("worker set_defaults: %s", r.Error)
+		}
+	}
 	// Ignore `ready` — if the goroutine had already errored, the read
 	// above would have failed too.
 	_ = ready
 	return w, nil
 }
 
+// effectiveOptions decides what to send as the `options` field. When the
+// caller passes nil, we send nil too (no options field) so the JS uses its
+// already-configured cached editor — fast path. When the caller passes
+// non-nil overrides, we merge with defaults and send the result.
+func (w *Worker) effectiveOptions(perCall *Options) *Options {
+	if perCall == nil {
+		return nil
+	}
+	return mergeOptions(w.defaults, perCall)
+}
+
 // MarkdownToPlate parses markdown into a Plate value using this Worker.
 func (w *Worker) MarkdownToPlate(ctx context.Context, md string, opts *Options) ([]Node, error) {
-	raw, err := w.call(ctx, opRequest{Op: "md_to_plate", Md: md, Options: opts})
+	raw, err := w.call(ctx, opRequest{Op: "md_to_plate", Md: md, Options: w.effectiveOptions(opts)})
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +154,7 @@ func (w *Worker) MarkdownToPlate(ctx context.Context, md string, opts *Options) 
 
 // PlateToMarkdown serializes a Plate value to markdown using this Worker.
 func (w *Worker) PlateToMarkdown(ctx context.Context, value []Node, opts *Options) (string, error) {
-	raw, err := w.call(ctx, opRequest{Op: "plate_to_md", Plate: value, Options: opts})
+	raw, err := w.call(ctx, opRequest{Op: "plate_to_md", Plate: value, Options: w.effectiveOptions(opts)})
 	if err != nil {
 		return "", err
 	}
@@ -131,13 +174,14 @@ func (w *Worker) Batch(ctx context.Context, ops []BatchOp) ([]BatchResult, error
 	}
 	reqs := make([]opRequest, len(ops))
 	for i, op := range ops {
+		effective := w.effectiveOptions(op.Options)
 		switch {
 		case op.Markdown != "" && op.PlateValue != nil:
 			return nil, fmt.Errorf("op[%d]: both Markdown and PlateValue set", i)
 		case op.PlateValue != nil:
-			reqs[i] = opRequest{Op: "plate_to_md", Plate: op.PlateValue, Options: op.Options}
+			reqs[i] = opRequest{Op: "plate_to_md", Plate: op.PlateValue, Options: effective}
 		default:
-			reqs[i] = opRequest{Op: "md_to_plate", Md: op.Markdown, Options: op.Options}
+			reqs[i] = opRequest{Op: "md_to_plate", Md: op.Markdown, Options: effective}
 		}
 	}
 

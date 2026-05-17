@@ -19,12 +19,22 @@ import (
 type Converter struct {
 	runtime  wazero.Runtime
 	compiled wazero.CompiledModule
+	defaults *Options
 }
 
 // New compiles the embedded WASM module. The compile step is the most
 // expensive part (~600ms on first call); reuse the returned *Converter
 // across all conversions for the lifetime of your process.
-func New() (*Converter, error) {
+//
+// Pass WithDefaultOptions to set a baseline Options that applies to
+// every call (and every Worker spawned from this Converter) unless the
+// caller overrides per call.
+func New(opts ...Option) (*Converter, error) {
+	cfg := converterConfig{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	ctx := context.Background()
 	rt := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfig().WithCloseOnContextDone(true))
 	if _, err := wasi_snapshot_preview1.Instantiate(ctx, rt); err != nil {
@@ -36,7 +46,27 @@ func New() (*Converter, error) {
 		rt.Close(ctx)
 		return nil, fmt.Errorf("compile module: %w", err)
 	}
-	return &Converter{runtime: rt, compiled: mod}, nil
+	return &Converter{runtime: rt, compiled: mod, defaults: cfg.defaults}, nil
+}
+
+// Defaults returns a deep copy of the baseline options the Converter was
+// constructed with, or nil if none were set. The returned value is safe
+// to mutate; changes do not propagate back into the Converter.
+func (c *Converter) Defaults() *Options {
+	if c == nil || c.defaults == nil {
+		return nil
+	}
+	out := Options{}
+	if c.defaults.Disable != nil {
+		out.Disable = append([]string(nil), c.defaults.Disable...)
+	}
+	if c.defaults.Markdown != nil {
+		out.Markdown = make(map[string]any, len(c.defaults.Markdown))
+		for k, v := range c.defaults.Markdown {
+			out.Markdown[k] = v
+		}
+	}
+	return &out
 }
 
 // Close releases the wazero runtime. After Close, the Converter and any

@@ -53,8 +53,8 @@ type BatchResult struct {
 // MarkdownToPlate is a one-shot helper that builds a temporary Converter,
 // runs the conversion, and tears it down. Prefer New()+reuse for repeated
 // calls — this helper pays the WASM compile cost every time.
-func MarkdownToPlate(ctx context.Context, md string) ([]Node, error) {
-	c, err := New()
+func MarkdownToPlate(ctx context.Context, md string, opts ...Option) ([]Node, error) {
+	c, err := New(opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -63,8 +63,8 @@ func MarkdownToPlate(ctx context.Context, md string) ([]Node, error) {
 }
 
 // PlateToMarkdown is the one-shot equivalent of (*Converter).PlateToMarkdown.
-func PlateToMarkdown(ctx context.Context, value []Node) (string, error) {
-	c, err := New()
+func PlateToMarkdown(ctx context.Context, value []Node, opts ...Option) (string, error) {
+	c, err := New(opts...)
 	if err != nil {
 		return "", err
 	}
@@ -76,7 +76,7 @@ func PlateToMarkdown(ctx context.Context, value []Node) (string, error) {
 
 // MarkdownToPlate parses markdown into a Plate value.
 func (c *Converter) MarkdownToPlate(ctx context.Context, md string, opts *Options) ([]Node, error) {
-	req := opRequest{Op: "md_to_plate", Md: md, Options: opts}
+	req := opRequest{Op: "md_to_plate", Md: md, Options: mergeOptions(c.defaults, opts)}
 	res, err := c.runOne(ctx, req)
 	if err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func (c *Converter) MarkdownToPlate(ctx context.Context, md string, opts *Option
 
 // PlateToMarkdown serializes a Plate value to markdown.
 func (c *Converter) PlateToMarkdown(ctx context.Context, value []Node, opts *Options) (string, error) {
-	req := opRequest{Op: "plate_to_md", Plate: value, Options: opts}
+	req := opRequest{Op: "plate_to_md", Plate: value, Options: mergeOptions(c.defaults, opts)}
 	res, err := c.runOne(ctx, req)
 	if err != nil {
 		return "", err
@@ -112,13 +112,14 @@ func (c *Converter) Batch(ctx context.Context, ops []BatchOp) ([]BatchResult, er
 	}
 	reqs := make([]opRequest, len(ops))
 	for i, op := range ops {
+		effective := mergeOptions(c.defaults, op.Options)
 		switch {
 		case op.Markdown != "" && op.PlateValue != nil:
 			return nil, fmt.Errorf("op[%d]: both Markdown and PlateValue set", i)
 		case op.PlateValue != nil:
-			reqs[i] = opRequest{Op: "plate_to_md", Plate: op.PlateValue, Options: op.Options}
+			reqs[i] = opRequest{Op: "plate_to_md", Plate: op.PlateValue, Options: effective}
 		default:
-			reqs[i] = opRequest{Op: "md_to_plate", Md: op.Markdown, Options: op.Options}
+			reqs[i] = opRequest{Op: "md_to_plate", Md: op.Markdown, Options: effective}
 		}
 	}
 

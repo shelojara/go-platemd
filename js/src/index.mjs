@@ -86,7 +86,9 @@ const buildEditor = (options) =>
 
 // Built once at module load — this is the big latency win. Calls that
 // pass no `options` reuse this editor across the entire process lifetime.
-const defaultEditor = buildEditor();
+// The set_defaults op rebuilds it with a configured baseline.
+let defaultEditor = buildEditor();
+let defaultOptions = null;
 
 const resetEditor = (editor) => {
   // Slate's value lives in editor.children. Resetting it is enough for
@@ -101,6 +103,14 @@ const errPayload = (e) => ({
 });
 
 const handleOp = (op) => {
+  // set_defaults updates the cached default editor and the stored default
+  // options. Subsequent ops without per-call options use the new cache.
+  if (op.op === "set_defaults") {
+    defaultOptions = op.options || null;
+    defaultEditor = buildEditor(defaultOptions);
+    return { ok: true, data: null };
+  }
+
   const editor = op.options ? buildEditor(op.options) : defaultEditor;
   switch (op.op) {
     case "md_to_plate": {

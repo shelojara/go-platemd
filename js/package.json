@@ -6,7 +6,7 @@
   "description": "JS bundle compiled to WebAssembly via Javy, providing markdown<->Plate JSON conversion via @platejs/markdown.",
   "scripts": {
     "bundle": "node esbuild.config.mjs",
-    "build": "npm run bundle && $HOME/bin/javy build -C dynamic=n -J event-loop=y -J text-encoding=y -o ../internal/wasm/plate.wasm dist/bundle.js"
+    "build": "npm run bundle && $HOME/bin/javy build -C dynamic=n -C source=omitted -J event-loop=y -J text-encoding=y -o ../internal/wasm/plate.wasm dist/bundle.js"
   },
   "dependencies": {
     "@platejs/basic-nodes": "^53.0.0",

@@ -22,7 +22,7 @@ bundle:
 	cd $(JS_DIR) && npm run bundle
 
 wasm: bundle
-	cd $(JS_DIR) && $(JAVY) build -C dynamic=n -J event-loop=y -J text-encoding=y -o ../$(WASM_OUT) dist/bundle.js
+	cd $(JS_DIR) && $(JAVY) build -C dynamic=n -C source=omitted -J event-loop=y -J text-encoding=y -o ../$(WASM_OUT) dist/bundle.js
 	@echo ""
 	@echo "Built $(WASM_OUT) ($$(wc -c < $(WASM_OUT)) bytes)"
 
