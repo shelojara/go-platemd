@@ -1,4 +1,4 @@
-module github.com/shelojara/go-platemd-wasm
+module github.com/shelojara/go-platemd
 
 go 1.24.7
 

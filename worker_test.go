@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	platemd "github.com/shelojara/go-platemd-wasm"
+	platemd "github.com/shelojara/go-platemd"
 )
 
 func newWorker(t *testing.T) (*platemd.Converter, *platemd.Worker) {

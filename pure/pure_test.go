@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shelojara/go-platemd-wasm/pure"
+	"github.com/shelojara/go-platemd/pure"
 )
 
 func newConverter(t *testing.T) *pure.Converter {

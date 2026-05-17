@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	platemd "github.com/shelojara/go-platemd-wasm"
+	platemd "github.com/shelojara/go-platemd"
 )
 
 const smallDoc = "# Hello\n\nSome **bold** text and a [link](https://example.com).\n"

@@ -18,7 +18,7 @@ No Node.js or CGO at runtime. A single static Go binary ships everything.
 > [pure/README quickstart](#pure-go-implementation) below.
 
 ```go
-import platemd "github.com/shelojara/go-platemd-wasm"
+import platemd "github.com/shelojara/go-platemd"
 
 c, err := platemd.New()
 if err != nil { /* ... */ }
@@ -35,7 +35,7 @@ md, err := c.PlateToMarkdown(ctx, value, nil)
 ## Install
 
 ```sh
-go get github.com/shelojara/go-platemd-wasm
+go get github.com/shelojara/go-platemd
 ```
 
 The `.wasm` blob (~3 MB) is checked into the repo, so `go get` is all you need.
@@ -326,7 +326,7 @@ node shapes the WASM backend emits. Quick comparison on `linux/amd64`:
 Usage:
 
 ```go
-import platepure "github.com/shelojara/go-platemd-wasm/pure"
+import platepure "github.com/shelojara/go-platemd/pure"
 
 c, _ := platepure.New()
 defer c.Close()

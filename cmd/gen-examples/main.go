@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	platemd "github.com/shelojara/go-platemd-wasm"
+	platemd "github.com/shelojara/go-platemd"
 )
 
 type example struct {
