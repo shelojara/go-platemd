@@ -1,4 +1,4 @@
-# go-platemd-wasm
+# go-platemd
 
 Convert between [Plate](https://platejs.org/) JSON values and Markdown from Go,
 using the upstream [`@platejs/markdown`](https://www.npmjs.com/package/@platejs/markdown)
