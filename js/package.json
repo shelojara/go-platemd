@@ -1,0 +1,28 @@
+{
+  "name": "platemd-wasm-bridge",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "JS bundle compiled to WebAssembly via Javy, providing markdown<->Plate JSON conversion via @platejs/markdown.",
+  "scripts": {
+    "bundle": "node esbuild.config.mjs",
+    "build": "npm run bundle && $HOME/bin/javy build -C dynamic=n -J event-loop=y -J text-encoding=y -o ../internal/wasm/plate.wasm dist/bundle.js"
+  },
+  "dependencies": {
+    "@platejs/basic-nodes": "^53.0.0",
+    "@platejs/basic-styles": "^53.0.0",
+    "@platejs/code-block": "^53.0.0",
+    "@platejs/link": "^53.0.3",
+    "@platejs/list": "^53.0.2",
+    "@platejs/markdown": "53.0.4",
+    "@platejs/math": "^53.0.0",
+    "@platejs/media": "^53.0.1",
+    "@platejs/table": "^53.0.0",
+    "platejs": "53.0.3",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.0"
+  }
+}
