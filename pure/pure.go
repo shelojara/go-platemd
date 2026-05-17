@@ -33,9 +33,9 @@ type Node = map[string]any
 // = default plugin set.
 type Options struct {
 	// Disable removes whole plugin categories. Valid categories:
-	// "basic", "marks", "lists", "links", "code", "tables", "media".
-	// Mirrors the WASM backend's option of the same name. Unknown
-	// category names are silently ignored.
+	// "basic", "marks", "lists", "links", "code", "tables", "media",
+	// "mentions". Mirrors the WASM backend's option of the same name.
+	// Unknown category names are silently ignored.
 	Disable []string `json:"disable,omitempty"`
 }
 

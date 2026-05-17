@@ -1,6 +1,8 @@
 package pure
 
 import (
+	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/yuin/goldmark"
@@ -408,12 +410,12 @@ func (w *walker) walkInlines(n ast.Node, marks map[string]bool, out *[]any) {
 				txt += "\n"
 			}
 			if txt != "" {
-				*out = append(*out, textWithMarks(txt, marks))
+				w.appendTextOrMentions(out, txt, marks)
 			}
 		case *ast.String:
 			txt := string(v.Value)
 			if txt != "" {
-				*out = append(*out, textWithMarks(txt, marks))
+				w.appendTextOrMentions(out, txt, marks)
 			}
 		case *ast.Emphasis:
 			markName := "italic"
@@ -454,14 +456,18 @@ func (w *walker) walkInlines(n ast.Node, marks map[string]bool, out *[]any) {
 				delete(marks, "strikethrough")
 			}
 		case *ast.Link:
-			url := string(v.Destination)
+			urlStr := string(v.Destination)
+			if strings.HasPrefix(urlStr, "mention:") && !disabled(w.opts, "mentions") {
+				*out = append(*out, w.mentionFromLink(v, urlStr))
+				continue
+			}
 			children := w.inlines(v)
 			if disabled(w.opts, "links") {
 				// Drop the link, keep the inner text inline.
 				*out = append(*out, children...)
 				continue
 			}
-			link := Node{"type": "a", "url": url, "children": children}
+			link := Node{"type": "a", "url": urlStr, "children": children}
 			*out = append(*out, link)
 		case *ast.AutoLink:
 			url := string(v.URL(w.src))
@@ -582,6 +588,93 @@ func singleImage(p *ast.Paragraph) *ast.Image {
 	}
 	img, _ := c.(*ast.Image)
 	return img
+}
+
+// ----- mentions -----
+
+// mentionPattern mirrors the regex used by @platejs/markdown's
+// remark-mention: an `@` must follow start-of-string or whitespace, and
+// the username (alphanumerics, `_`, `-`) must be followed by whitespace,
+// end-of-string, or one of `.,;:!?)`. Trailing context is checked
+// manually because Go's regexp doesn't support lookahead.
+var mentionPattern = regexp.MustCompile(`(^|\s)@([A-Za-z0-9_-]+)`)
+
+func isMentionTrailingByte(c byte) bool {
+	switch c {
+	case ' ', '\t', '\n', '\r', '.', ',', ';', ':', '!', '?', ')':
+		return true
+	}
+	return false
+}
+
+// appendTextOrMentions splits txt at `@user` patterns and appends the
+// resulting text + mention nodes onto out, preserving marks on the text
+// segments. When the mentions category is disabled, the text is emitted
+// untouched.
+func (w *walker) appendTextOrMentions(out *[]any, txt string, marks map[string]bool) {
+	if disabled(w.opts, "mentions") {
+		*out = append(*out, textWithMarks(txt, marks))
+		return
+	}
+	matches := mentionPattern.FindAllStringSubmatchIndex(txt, -1)
+	if matches == nil {
+		*out = append(*out, textWithMarks(txt, marks))
+		return
+	}
+	cursor := 0
+	for _, m := range matches {
+		// m[0:2] = whole match, m[2:4] = leading (^|\s), m[4:6] = username
+		usernameEnd := m[5]
+		if usernameEnd < len(txt) && !isMentionTrailingByte(txt[usernameEnd]) {
+			// Trailing context fails — leave this @x in text and try the next.
+			continue
+		}
+		// Start the mention at the `@` (skip the leading whitespace, if any,
+		// so it stays with the surrounding text segment).
+		atStart := m[0]
+		if m[3] > m[2] {
+			atStart++
+		}
+		if atStart > cursor {
+			*out = append(*out, textWithMarks(txt[cursor:atStart], marks))
+		}
+		username := txt[m[4]:m[5]]
+		*out = append(*out, Node{
+			"type":     "mention",
+			"value":    username,
+			"children": []any{textNode("")},
+		})
+		cursor = usernameEnd
+	}
+	if cursor < len(txt) {
+		*out = append(*out, textWithMarks(txt[cursor:], marks))
+	}
+}
+
+// mentionFromLink turns a `[label](mention:id)` link into a Plate mention
+// node. The mention `key` is only set when the encoded id and the display
+// label diverge, matching @platejs/markdown's `mention` rule.
+func (w *walker) mentionFromLink(v *ast.Link, dest string) Node {
+	rawID := strings.TrimPrefix(dest, "mention:")
+	id, err := url.QueryUnescape(rawID)
+	if err != nil {
+		id = rawID
+	}
+	var sb strings.Builder
+	collectPlainText(v, w.src, &sb)
+	display := sb.String()
+	if display == "" {
+		display = id
+	}
+	n := Node{
+		"type":     "mention",
+		"value":    display,
+		"children": []any{textNode("")},
+	}
+	if display != id {
+		n["key"] = id
+	}
+	return n
 }
 
 // collectPlainText recursively concatenates Text/String values under n,

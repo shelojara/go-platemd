@@ -17,6 +17,7 @@
     "@platejs/markdown": "53.0.4",
     "@platejs/math": "^53.0.0",
     "@platejs/media": "^53.0.1",
+    "@platejs/mention": "^53.0.0",
     "@platejs/table": "^53.0.0",
     "platejs": "53.0.3",
     "react": "18.3.1",

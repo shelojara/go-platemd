@@ -5,7 +5,8 @@
 // and worker mode (Go keeps the pipe open for many frames).
 
 import { createSlateEditor } from "platejs";
-import { MarkdownPlugin } from "@platejs/markdown";
+import { MarkdownPlugin, remarkMention } from "@platejs/markdown";
+import { BaseMentionPlugin } from "@platejs/mention";
 import {
   BaseBasicBlocksPlugin,
   BaseHeadingPlugin,
@@ -58,6 +59,7 @@ const PLUGIN_CATEGORIES = {
   code: [BaseCodeBlockPlugin, BaseCodeLinePlugin, BaseCodeSyntaxPlugin],
   tables: [BaseTablePlugin, BaseTableRowPlugin, BaseTableCellPlugin, BaseTableCellHeaderPlugin],
   media: [BaseImagePlugin, BaseAudioPlugin, BaseVideoPlugin, BaseFilePlugin, BaseMediaEmbedPlugin],
+  mentions: [BaseMentionPlugin],
 };
 
 const allDefaultPlugins = () => {
@@ -79,9 +81,16 @@ const selectPlugins = (options) => {
 
 const buildMarkdownPlugin = (options) => {
   // remark-gfm is always on — tables, strikethrough, autolinks, task lists.
-  // It is bundled into the WASM blob; Go callers cannot ship remark plugin
-  // functions through the JSON boundary, so we own the plugin list here.
-  const mdOpts = { ...(options?.markdown || {}), remarkPlugins: [remarkGfm] };
+  // remark-mention is added unless the "mentions" category is disabled; it
+  // rewrites `@user` and `[label](mention:id)` patterns into mention mdast
+  // nodes that the markdown plugin's `mention` rule then lowers to Plate.
+  // Both are bundled into the WASM blob; Go callers cannot ship remark
+  // plugin functions through the JSON boundary, so we own the plugin list
+  // here.
+  const disable = new Set(options?.disable || []);
+  const remarkPlugins = [remarkGfm];
+  if (!disable.has("mentions")) remarkPlugins.push(remarkMention);
+  const mdOpts = { ...(options?.markdown || {}), remarkPlugins };
   return MarkdownPlugin.configure({ options: mdOpts });
 };
 

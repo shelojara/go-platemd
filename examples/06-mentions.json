@@ -1,0 +1,35 @@
+[
+  {
+    "children": [
+      {
+        "text": "Hi "
+      },
+      {
+        "children": [
+          {
+            "text": ""
+          }
+        ],
+        "type": "mention",
+        "value": "alice"
+      },
+      {
+        "text": ", please review with "
+      },
+      {
+        "children": [
+          {
+            "text": ""
+          }
+        ],
+        "key": "u_42",
+        "type": "mention",
+        "value": "@Jane Doe"
+      },
+      {
+        "text": "."
+      }
+    ],
+    "type": "p"
+  }
+]
