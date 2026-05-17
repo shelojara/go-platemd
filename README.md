@@ -100,10 +100,19 @@ type Options struct {
 
     // Markdown is forwarded into MarkdownPlugin.configure({ options: ... })
     // on the JS side. See @platejs/markdown for accepted keys
-    // (`nodes`, `rules`, `remarkPlugins`, etc.).
+    // (`allowedNodes`, `disallowedNodes`, `rules`, `remarkStringifyOptions`,
+    // etc.). `remarkPlugins` cannot be set from Go — remark plugins are
+    // functions and don't survive the JSON boundary. The bundled set
+    // (currently just `remark-gfm`) is fixed at build time in
+    // `js/src/index.mjs`.
     Markdown map[string]any
 }
 ```
+
+`remark-gfm` is enabled by default, so GFM tables, strikethrough
+(`~~foo~~`), task lists (`- [x] done`), and bare-URL autolinks all parse
+and serialize. Tables are nested as `table` → `tr` → `th`/`td` → `p`
+(see [examples/05-table.json](./examples/05-table.json)).
 
 ## Examples
 
@@ -117,6 +126,7 @@ the result of one `MarkdownToPlate` call on the default plugin set:
 | [02-lists.md](./examples/02-lists.md) | [02-lists.json](./examples/02-lists.json) | unordered + ordered lists (indent-based `listStyleType` shape) |
 | [03-link-quote-code.md](./examples/03-link-quote-code.md) | [03-link-quote-code.json](./examples/03-link-quote-code.json) | inline link, blockquote, fenced code block |
 | [04-image-and-rule.md](./examples/04-image-and-rule.md) | [04-image-and-rule.json](./examples/04-image-and-rule.json) | image (`img` with `caption`) and horizontal rule |
+| [05-table.md](./examples/05-table.md) | [05-table.json](./examples/05-table.json) | GFM table (`table` / `tr` / `th` / `td` nesting) |
 
 For instance, `01-formatting.md`:
 

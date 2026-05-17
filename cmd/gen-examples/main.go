@@ -54,6 +54,13 @@ func main() {
 				"---\n\n" +
 				"And a paragraph after the rule.\n",
 		},
+		{
+			name: "05-table",
+			md: "| Lang | Year |\n" +
+				"| ---- | ---- |\n" +
+				"| Go   | 2009 |\n" +
+				"| Rust | 2010 |\n",
+		},
 	}
 
 	c, err := platemd.New()

@@ -181,6 +181,44 @@ func TestOneShot(t *testing.T) {
 	}
 }
 
+func TestTable_RoundTrip(t *testing.T) {
+	c := newConverter(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	md := "| Lang | Year |\n| ---- | ---- |\n| Go   | 2009 |\n| Rust | 2010 |\n"
+	value, err := c.MarkdownToPlate(ctx, md, nil)
+	if err != nil {
+		t.Fatalf("md->plate: %v", err)
+	}
+	if len(value) != 1 || value[0]["type"] != "table" {
+		t.Fatalf("expected single table node, got %+v", value)
+	}
+	rows, _ := value[0]["children"].([]any)
+	if len(rows) != 3 {
+		t.Fatalf("expected 3 rows (header + 2 body), got %d: %+v", len(rows), rows)
+	}
+	header, _ := rows[0].(map[string]any)
+	if header["type"] != "tr" {
+		t.Errorf("rows[0].type = %v, want tr", header["type"])
+	}
+	headerCells, _ := header["children"].([]any)
+	firstHeader, _ := headerCells[0].(map[string]any)
+	if firstHeader["type"] != "th" {
+		t.Errorf("first header cell type = %v, want th", firstHeader["type"])
+	}
+
+	out, err := c.PlateToMarkdown(ctx, value, nil)
+	if err != nil {
+		t.Fatalf("plate->md: %v", err)
+	}
+	for _, want := range []string{"| Lang", "| Year", "| Go", "| Rust"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("serialized markdown missing %q: %s", want, out)
+		}
+	}
+}
+
 func TestDisableOption(t *testing.T) {
 	c := newConverter(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

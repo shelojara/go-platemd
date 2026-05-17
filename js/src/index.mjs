@@ -38,6 +38,7 @@ import {
   BaseFilePlugin,
   BaseMediaEmbedPlugin,
 } from "@platejs/media";
+import remarkGfm from "remark-gfm";
 
 // Plugin categories. Consumers can drop whole categories per call via
 // `options.disable`. Math is intentionally excluded — KaTeX has DOM-load
@@ -77,8 +78,11 @@ const selectPlugins = (options) => {
 };
 
 const buildMarkdownPlugin = (options) => {
-  const mdOpts = options?.markdown;
-  return mdOpts ? MarkdownPlugin.configure({ options: mdOpts }) : MarkdownPlugin;
+  // remark-gfm is always on — tables, strikethrough, autolinks, task lists.
+  // It is bundled into the WASM blob; Go callers cannot ship remark plugin
+  // functions through the JSON boundary, so we own the plugin list here.
+  const mdOpts = { ...(options?.markdown || {}), remarkPlugins: [remarkGfm] };
+  return MarkdownPlugin.configure({ options: mdOpts });
 };
 
 const buildEditor = (options) =>
